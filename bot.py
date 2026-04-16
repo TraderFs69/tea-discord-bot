@@ -12,11 +12,6 @@ intents.message_content = True
 
 bot = discord.Client(intents=intents)
 
-SYSTEM_PROMPT = """
-Tu es un trader professionnel.
-Réponses courtes, directes, sans bullshit.
-"""
-
 @bot.event
 async def on_ready():
     print(f"Connecté comme {bot.user}")
@@ -31,19 +26,16 @@ async def on_message(message):
 
         try:
             response = client.responses.create(
-                model="gpt-5.3",
-                input=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": question}
-                ]
+                model="gpt-4.1-mini",  # 🔥 modèle stable pour test
+                input=question
             )
 
-            reply = response.output[0].content[0].text
+            print("REPONSE OPENAI:", response)
 
-            await message.channel.send(reply)
+            await message.channel.send(str(response))
 
         except Exception as e:
-            print("ERREUR OPENAI:", e)
-            await message.channel.send("Erreur, réessaie.")
+            print("ERREUR OPENAI COMPLETE:", e)
+            await message.channel.send(f"Erreur: {e}")
 
 bot.run(DISCORD_TOKEN)
