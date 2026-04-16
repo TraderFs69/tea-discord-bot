@@ -55,10 +55,18 @@ async def on_message(message):
             return
 
         try:
-            response = client.responses.create(
-                model="gpt-4.1-mini",
-                input=question
-            )
+           response = client.responses.create(
+    model="gpt-4.1-mini",
+    input=f"""
+Tu es un trader professionnel.
+
+Réponds UNIQUEMENT en contexte marchés financiers.
+Ignore toute autre définition.
+
+Question:
+{question}
+"""
+)
 
             # 🔥 extraction propre (ULTRA IMPORTANT)
             reply = ""
