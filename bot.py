@@ -13,16 +13,8 @@ intents.message_content = True
 bot = discord.Client(intents=intents)
 
 SYSTEM_PROMPT = """
-Tu es un trader professionnel expérimenté.
-
-Style:
-- Direct
-- Sans bullshit
-- Réponses courtes (3-6 lignes)
-- Tu penses en probabilités
-
-Tu aides les utilisateurs à comprendre les marchés.
-Tu ne promets jamais de gains.
+Tu es un trader professionnel.
+Réponses courtes, directes, sans bullshit.
 """
 
 @bot.event
@@ -37,10 +29,6 @@ async def on_message(message):
     if message.content.startswith("!tea"):
         question = message.content.replace("!tea", "").strip()
 
-        if question == "":
-            await message.channel.send("Pose une vraie question après !tea")
-            return
-
         try:
             response = client.responses.create(
                 model="gpt-5.3",
@@ -50,11 +38,12 @@ async def on_message(message):
                 ]
             )
 
-            reply = response.output_text
+            reply = response.output[0].content[0].text
+
             await message.channel.send(reply)
 
         except Exception as e:
+            print("ERREUR OPENAI:", e)
             await message.channel.send("Erreur, réessaie.")
-            print(e)
 
 bot.run(DISCORD_TOKEN)
