@@ -2,6 +2,8 @@ import discord
 import os
 import requests
 
+print("VERSION TEST 12345")
+
 # 🔐 Clés
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
