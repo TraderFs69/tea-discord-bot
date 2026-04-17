@@ -26,22 +26,18 @@ async def on_message(message):
         return
 
     if message.content.startswith("!analyse"):
-        ticker = message.content.replace("!analyse", "").strip().upper()
+    ticker = message.content.replace("!analyse", "").strip().upper()
 
-        if ticker == "":
-            await message.channel.send("Ex: !analyse AAPL")
-            return
+    await message.channel.send("Test Massive API...")
 
-        await message.channel.send("Test Polygon en cours...")
+    try:
+        url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/prev?apiKey={POLYGON_API_KEY}"
+        r = requests.get(url)
 
-        try:
-            url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/5?adjusted=true&apiKey={POLYGON_API_KEY}"
-            r = requests.get(url)
+        await message.channel.send(f"Status code: {r.status_code}")
+        await message.channel.send(r.text[:500])
 
-            await message.channel.send(f"Status code: {r.status_code}")
-            await message.channel.send(r.text[:500])
-
-        except Exception as e:
-            await message.channel.send(f"Erreur: {str(e)}")
+    except Exception as e:
+        await message.channel.send(f"Erreur: {str(e)}")
 
 bot.run(DISCORD_TOKEN)
