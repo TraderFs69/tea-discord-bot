@@ -17,7 +17,7 @@ intents.message_content = True
 bot = discord.Client(intents=intents)
 
 # ======================
-# 📊 DATA POLYGON
+# 📊 DATA
 # ======================
 def get_data(ticker):
     url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/200?adjusted=true&apiKey={POLYGON_API_KEY}"
@@ -39,7 +39,6 @@ def calculate_indicators(df):
     df["ema20"] = df["close"].ewm(span=20).mean()
     df["ema50"] = df["close"].ewm(span=50).mean()
 
-    # RSI
     delta = df["close"].diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
@@ -53,7 +52,7 @@ def calculate_indicators(df):
     return df
 
 # ======================
-# 🧠 SCORING SYSTEM
+# 🧠 SCORING
 # ======================
 def score_stock(df):
     last = df.iloc[-1]
@@ -62,19 +61,72 @@ def score_stock(df):
 
     # Trend
     if last["close"] > last["ema50"]:
-        score += 25
+        score += 30
+
+    # Structure
     if last["ema9"] > last["ema20"]:
         score += 25
 
     # Momentum
     if last["rsi"] > 50:
-        score += 25
+        score += 20
 
     # Strength
     if last["close"] > last["ema20"]:
         score += 25
 
     return score
+
+# ======================
+# 📊 ANALYSE STRUCTURÉE
+# ======================
+def build_analysis(df, score):
+    last = df.iloc[-1]
+
+    # Bias
+    if score >= 75:
+        bias = "Bullish fort"
+    elif score >= 50:
+        bias = "Bullish modéré"
+    elif score >= 30:
+        bias = "Neutre"
+    else:
+        bias = "Bearish"
+
+    # Structure logique (PAS IA)
+    if last["close"] > last["ema20"]:
+        structure = "au-dessus EMA20 (structure haussière)"
+    else:
+        structure = "sous EMA20 (structure fragile)"
+
+    # Momentum logique
+    if last["rsi"] > 60:
+        momentum = "fort"
+    elif last["rsi"] > 50:
+        momentum = "positif"
+    else:
+        momentum = "faible"
+
+    # Scénario logique
+    if score >= 60:
+        scenario = "continuation haussière probable"
+    elif score >= 40:
+        scenario = "range / consolidation"
+    else:
+        scenario = "pression baissière probable"
+
+    # Risque logique
+    risk = "perte EMA20 = affaiblissement"
+
+    return {
+        "bias": bias,
+        "structure": structure,
+        "momentum": momentum,
+        "scenario": scenario,
+        "risk": risk,
+        "price": last["close"],
+        "rsi": last["rsi"]
+    }
 
 # ======================
 # 🤖 BOT
@@ -88,9 +140,6 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # ======================
-    # 🔹 ANALYSE PRO
-    # ======================
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
 
@@ -105,53 +154,23 @@ async def on_message(message):
             return
 
         df = calculate_indicators(df)
-
         score = score_stock(df)
-        last = df.iloc[-1]
+        analysis = build_analysis(df, score)
 
-        # 🔥 INTERPRÉTATION
-        if score >= 75:
-            bias = "Bullish fort"
-        elif score >= 50:
-            bias = "Bullish modéré"
-        elif score >= 25:
-            bias = "Neutre / faible"
-        else:
-            bias = "Bearish"
+        # 🔥 FORMAT FINAL (100% contrôlé)
+        reply = f"""
+📊 {ticker} | Score: {score}/100 | {analysis['bias']}
 
-        prompt = f"""
-Tu es un trader hedge fund.
+Prix: {analysis['price']:.2f}
+RSI: {analysis['rsi']:.1f}
 
-Données:
-Prix: {last['close']:.2f}
-RSI: {last['rsi']:.2f}
-EMA9: {last['ema9']:.2f}
-EMA20: {last['ema20']:.2f}
-EMA50: {last['ema50']:.2f}
-Score: {score}/100
-Biais: {bias}
+Structure: {analysis['structure']}
+Momentum: {analysis['momentum']}
 
-Donne:
-- lecture rapide
-- scénario probable
-- risque
-
-Style desk, direct, sans bullshit.
+Scénario: {analysis['scenario']}
+Risque: {analysis['risk']}
 """
 
-        try:
-            response = client.responses.create(
-                model="gpt-4.1-mini",
-                input=prompt
-            )
-
-            reply = response.output_text or "Erreur analyse."
-            reply = reply[:1900]
-
-            await message.channel.send(f"📊 {ticker} | Score: {score}/100 | {bias}\n\n{reply}")
-
-        except Exception as e:
-            print(e)
-            await message.channel.send("Erreur analyse.")
+        await message.channel.send(reply[:1900])
 
 bot.run(DISCORD_TOKEN)
