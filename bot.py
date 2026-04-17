@@ -10,30 +10,21 @@ bot = discord.Client(intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"BOT CONNECTÉ: {bot.user}")
+    print("BOT CONNECTÉ")
 
 @bot.event
 async def on_message(message):
-    print("MESSAGE REÇU:", message.content)
+    print("MESSAGE:", message.content)
 
-    # Ignore les messages du bot
     if message.author == bot.user:
         return
 
-    # Commande test
     if message.content == "!test":
-        await message.channel.send("Bot OK")
+        await message.channel.send("OK")
         return
 
-    # Commande analyse (simple pour tester)
     if message.content.startswith("!analyse"):
-        ticker = message.content.replace("!analyse", "").strip().upper()
-
-        if ticker == "":
-            await message.channel.send("Ex: !analyse TSLA")
-            return
-
-        await message.channel.send(f"Analyse reçue pour {ticker}")
+        await message.channel.send("Analyse OK")
         return
 
 bot.run(DISCORD_TOKEN)
