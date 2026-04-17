@@ -27,31 +27,20 @@ async def on_message(message):
         return
 
     # ANALYSE (BIEN INDENTÉE)
-    if message.content.startswith("!analyse"):
-        ticker = message.content.replace("!analyse", "").strip().upper()
+   if message.content.startswith("!analyse"):
+    ticker = message.content.replace("!analyse", "").strip().upper()
 
-        if ticker == "":
-            await message.channel.send("Ex: !analyse AAPL")
-            return
+    await message.channel.send("Test Polygon en cours...")
 
-        await message.channel.send(f"Récupération des données pour {ticker}...")
+    try:
+        url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/5?adjusted=true&apiKey={POLYGON_API_KEY}"
+        r = requests.get(url)
 
-        try:
-            url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/30?adjusted=true&apiKey={POLYGON_API_KEY}"
-            r = requests.get(url)
-            data = r.json()
+        await message.channel.send(f"Status code: {r.status_code}")
 
-            if "results" not in data:
-                await message.channel.send("Erreur données Polygon.")
-                return
+        await message.channel.send(r.text[:500])  # montre réponse brute
 
-            closes = [c["c"] for c in data["results"]]
-            last_price = closes[-1]
-
-            await message.channel.send(f"{ticker} prix actuel: {last_price:.2f}")
-
-        except Exception as e:
-            print("ERREUR:", e)
-            await message.channel.send("Erreur analyse.")
+    except Exception as e:
+        await message.channel.send(f"Erreur: {str(e)}")
 
 bot.run(DISCORD_TOKEN)
