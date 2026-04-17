@@ -3,20 +3,45 @@ import os
 import requests
 from openai import OpenAI
 
+# ======================
 # 🔐 KEYS
+# ======================
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# ⚙️ Discord
+# ======================
+# ⚙️ DISCORD
+# ======================
 intents = discord.Intents.default()
 intents.message_content = True
 bot = discord.Client(intents=intents)
 
-# 🧠 MÉMOIRE PAR UTILISATEUR
+# ======================
+# 🧠 MEMORY
+# ======================
 memory = {}
+
+# ======================
+# 📰 NEWS FUNCTION
+# ======================
+def get_news(ticker):
+    try:
+        url = f"https://newsapi.org/v2/everything?q={ticker}&language=en&sortBy=publishedAt&pageSize=5&apiKey={NEWS_API_KEY}"
+        r = requests.get(url)
+        data = r.json()
+
+        articles = []
+        if "articles" in data:
+            for a in data["articles"]:
+                articles.append(a["title"])
+
+        return articles
+    except:
+        return []
 
 # ======================
 # READY
@@ -51,7 +76,7 @@ async def on_message(message):
 
         try:
             response = client.chat.completions.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
                 messages=[
                     {"role": "system", "content": "Donne les stocks populaires Reddit et Stocktwits."},
                     {"role": "user", "content": "Donne 5 stocks Reddit et 5 Stocktwits."}
@@ -62,13 +87,14 @@ async def on_message(message):
             await message.channel.send("🔥 TREND RETAIL\n\n" +
                                        response.choices[0].message.content +
                                        "\n\n⚠️ À valider avec !analyse")
+
         except:
             await message.channel.send("Erreur trend.")
 
         return
 
     # ======================
-    # ANALYSE
+    # ANALYSE TECHNIQUE
     # ======================
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
@@ -91,16 +117,11 @@ async def on_message(message):
             closes = [c["c"] for c in data["results"]]
 
             # RSI
-            gains = []
-            losses = []
+            gains, losses = [], []
             for i in range(1, len(closes)):
                 diff = closes[i] - closes[i-1]
-                if diff > 0:
-                    gains.append(diff)
-                    losses.append(0)
-                else:
-                    gains.append(0)
-                    losses.append(abs(diff))
+                gains.append(diff if diff > 0 else 0)
+                losses.append(abs(diff) if diff < 0 else 0)
 
             avg_gain = sum(gains[-14:]) / 14
             avg_loss = sum(losses[-14:]) / 14
@@ -109,11 +130,11 @@ async def on_message(message):
 
             # EMA
             def ema(prices, period):
-                multiplier = 2 / (period + 1)
-                ema_val = prices[0]
+                m = 2 / (period + 1)
+                val = prices[0]
                 for p in prices:
-                    ema_val = (p - ema_val) * multiplier + ema_val
-                return ema_val
+                    val = (p - val) * m + val
+                return val
 
             ema9 = ema(closes[-20:], 9)
             ema20 = ema(closes[-20:], 20)
@@ -128,75 +149,93 @@ async def on_message(message):
             if rsi > 50: score += 25
             if price > ema9: score += 20
 
-            bias = "Bullish fort" if score >= 75 else "Bullish modéré" if score >= 50 else "Neutre" if score >= 30 else "Bearish"
-            scenario = "continuation haussière" if score >= 70 else "consolidation" if score >= 50 else "pression baissière"
-
             probability = min(85, int(40 + score * 0.4))
 
             await message.channel.send(
                 f"{ticker}\n\nPrix: {price:.2f}\nRSI: {rsi:.1f}\n\n"
                 f"EMA9: {ema9:.2f}\nEMA20: {ema20:.2f}\n\n"
                 f"Structure: {structure}\nMomentum: {momentum}\n\n"
-                f"Score: {score}/100\nBiais: {bias}\n\n"
-                f"Scénario: {scenario}\nProbabilité: {probability}%"
+                f"Score: {score}/100\nProbabilité: {probability}%"
             )
 
-        except:
+        except Exception as e:
+            print(e)
             await message.channel.send("Erreur analyse.")
 
         return
 
     # ======================
-    # CHAT AVEC MÉMOIRE (MENTION)
+    # CHAT AVEC NEWS + LOGIQUE
     # ======================
     if bot.user in message.mentions:
 
-        question = message.content.replace(f"<@{bot.user.id}>", "")
-        question = question.replace(f"<@!{bot.user.id}>", "").strip()
+        question = message.content
+        for mention in message.mentions:
+            question = question.replace(f"<@{mention.id}>", "")
+            question = question.replace(f"<@!{mention.id}>", "")
+
+        question = question.strip()
 
         if question == "":
             await message.channel.send("Pose-moi une question 😊")
             return
 
-        await message.channel.send("Réflexion...")
+        await message.channel.send("Analyse en cours...")
 
-        # 🔥 MÉMOIRE
         if user_id not in memory:
             memory[user_id] = []
 
         memory[user_id].append({"role": "user", "content": question})
-
-        # Limite mémoire (10 messages)
         memory[user_id] = memory[user_id][-10:]
+
+        # 🔥 DETECT TICKER
+        words = question.split()
+        ticker = None
+        for w in words:
+            if w.isupper() and len(w) <= 5:
+                ticker = w
+                break
+
+        news_text = ""
+        if ticker:
+            news = get_news(ticker)
+            news_text = "\n".join(news)
 
         try:
             response = client.chat.completions.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
                 messages=[
                     {
                         "role": "system",
-                        "content": """Tu es un trader professionnel style TEA.
+                        "content": """Tu es un trader professionnel.
 
-Règles :
-- Pas de bullshit
-- Réponse courte, directe
-- Toujours orienté décision
-- Toujours parler en probabilité
-- Prioriser structure, momentum, contexte
+Tu dois analyser la cause principale d’un mouvement.
 
-Style :
-- Punchy
-- Clair
-- Trading mindset
+Tu combines :
+- news
+- momentum
+- contexte marché
+
+Tu réponds comme un humain expérimenté, pas comme une encyclopédie.
+"""
+                    },
+                    {
+                        "role": "user",
+                        "content": f"""
+Question: {question}
+
+News récentes:
+{news_text}
+
+Explique pourquoi le stock bouge réellement.
 """
                     }
-                ] + memory[user_id],
-                max_tokens=200
+                ],
+                max_tokens=400
             )
 
             reply = response.choices[0].message.content
 
-            # Sauvegarde réponse
             memory[user_id].append({"role": "assistant", "content": reply})
 
             await message.channel.send(reply)
