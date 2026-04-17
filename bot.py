@@ -9,7 +9,6 @@ from openai import OpenAI
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -26,11 +25,11 @@ bot = discord.Client(intents=intents)
 memory = {}
 
 # ======================
-# 📰 NEWS FUNCTION
+# 📰 GDELT NEWS FUNCTION
 # ======================
-def get_news(ticker):
+def get_news_gdelt(ticker):
     try:
-        url = f"https://newsapi.org/v2/everything?q={ticker}&language=en&sortBy=publishedAt&pageSize=5&apiKey={NEWS_API_KEY}"
+        url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={ticker}&mode=artlist&maxrecords=5&format=json"
         r = requests.get(url)
         data = r.json()
 
@@ -40,6 +39,7 @@ def get_news(ticker):
                 articles.append(a["title"])
 
         return articles
+
     except:
         return []
 
@@ -69,7 +69,7 @@ async def on_message(message):
         return
 
     # ======================
-    # TREND
+    # 🔥 TREND
     # ======================
     if message.content == "!trend":
         await message.channel.send("Scan des tendances retail...")
@@ -84,9 +84,11 @@ async def on_message(message):
                 max_tokens=150
             )
 
-            await message.channel.send("🔥 TREND RETAIL\n\n" +
-                                       response.choices[0].message.content +
-                                       "\n\n⚠️ À valider avec !analyse")
+            await message.channel.send(
+                "🔥 TREND RETAIL\n\n" +
+                response.choices[0].message.content +
+                "\n\n⚠️ À valider avec !analyse"
+            )
 
         except:
             await message.channel.send("Erreur trend.")
@@ -94,7 +96,7 @@ async def on_message(message):
         return
 
     # ======================
-    # ANALYSE TECHNIQUE
+    # 📊 ANALYSE TECHNIQUE
     # ======================
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
@@ -125,7 +127,6 @@ async def on_message(message):
 
             avg_gain = sum(gains[-14:]) / 14
             avg_loss = sum(losses[-14:]) / 14
-
             rsi = 100 if avg_loss == 0 else 100 - (100 / (1 + (avg_gain / avg_loss)))
 
             # EMA
@@ -165,7 +166,7 @@ async def on_message(message):
         return
 
     # ======================
-    # CHAT AVEC NEWS + LOGIQUE
+    # 💬 CHAT + NEWS TEMPS RÉEL
     # ======================
     if bot.user in message.mentions:
 
@@ -198,7 +199,7 @@ async def on_message(message):
 
         news_text = ""
         if ticker:
-            news = get_news(ticker)
+            news = get_news_gdelt(ticker)
             news_text = "\n".join(news)
 
         try:
@@ -209,14 +210,14 @@ async def on_message(message):
                         "role": "system",
                         "content": """Tu es un trader professionnel.
 
-Tu dois analyser la cause principale d’un mouvement.
+Tu dois identifier la cause PRINCIPALE d’un mouvement.
 
-Tu combines :
-- news
-- momentum
-- contexte marché
+Méthode :
+1. Trouver la news dominante
+2. Vérifier le momentum
+3. Voir si c’est du positioning ou du fondamental
 
-Tu réponds comme un humain expérimenté, pas comme une encyclopédie.
+Réponds comme un trader expérimenté, pas comme un journaliste.
 """
                     },
                     {
@@ -227,7 +228,7 @@ Question: {question}
 News récentes:
 {news_text}
 
-Explique pourquoi le stock bouge réellement.
+Explique la vraie raison du mouvement.
 """
                     }
                 ],
