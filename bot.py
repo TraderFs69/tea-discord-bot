@@ -1,59 +1,76 @@
 import discord
 import os
+import requests
 
+# 🔐 Clés
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
 
+# ⚙️ Discord setup
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = discord.Client(intents=intents)
 
+# ======================
+# 🤖 BOT READY
+# ======================
 @bot.event
 async def on_ready():
-    print("BOT CONNECTÉ")
+    print(f"BOT CONNECTÉ: {bot.user}")
 
+# ======================
+# 💬 MESSAGE HANDLER
+# ======================
 @bot.event
 async def on_message(message):
     print("MESSAGE:", message.content)
 
+    # Ignore messages du bot
     if message.author == bot.user:
         return
 
-    # TEST
+    # 🔹 TEST
     if message.content == "!test":
         await message.channel.send("Bot OK")
         return
 
-    # ANALYSE SIMPLE
+    # 🔹 ANALYSE UNIQUE (IMPORTANT)
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
 
         if ticker == "":
-            await message.channel.send("Ex: !analyse TSLA")
+            await message.channel.send("Ex: !analyse AAPL")
             return
 
         await message.channel.send(f"Récupération des données pour {ticker}...")
 
         try:
-            import requests
-
-            POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
-
             url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/30?adjusted=true&apiKey={POLYGON_API_KEY}"
             r = requests.get(url)
             data = r.json()
 
+            print("DATA POLYGON:", data)
+
+            # Vérification données
             if "results" not in data:
-                await message.channel.send("Erreur données.")
+                await message.channel.send("Erreur données Polygon.")
                 return
 
             closes = [c["c"] for c in data["results"]]
+
+            if len(closes) == 0:
+                await message.channel.send("Pas de données.")
+                return
+
             last_price = closes[-1]
 
+            # 🔥 Réponse propre
             await message.channel.send(f"{ticker} prix actuel: {last_price:.2f}")
 
         except Exception as e:
             print("ERREUR:", e)
             await message.channel.send("Erreur analyse.")
 
+# 🚀 Lancement
 bot.run(DISCORD_TOKEN)
