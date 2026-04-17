@@ -22,3 +22,9 @@ async def on_message(message):
     await message.channel.send("Je fonctionne")
 
 bot.run(DISCORD_TOKEN)
+
+    if message.content.startswith("!analyse"):
+        ticker = message.content.replace("!analyse", "").strip().upper()
+
+        await message.channel.send(f"Analyse reçue pour {ticker}")
+        return
