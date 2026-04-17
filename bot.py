@@ -1,26 +1,30 @@
 import discord
 import os
 import requests
+from openai import OpenAI
 
-# 🔐 Clés
+# 🔐 KEYS
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# ⚙️ Discord setup
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# ⚙️ Discord
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = discord.Client(intents=intents)
 
 # ======================
-# 🤖 BOT READY
+# READY
 # ======================
 @bot.event
 async def on_ready():
     print("BOT CONNECTÉ")
 
 # ======================
-# 💬 MESSAGE HANDLER
+# MESSAGE
 # ======================
 @bot.event
 async def on_message(message):
@@ -28,12 +32,47 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # 🔹 TEST
+    # ======================
+    # TEST
+    # ======================
     if message.content == "!test":
         await message.channel.send("Bot OK")
         return
 
-    # 🔹 ANALYSE
+    # ======================
+    # 🔥 TREND RETAIL
+    # ======================
+    if message.content == "!trend":
+        await message.channel.send("Scan des tendances retail...")
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Tu es un analyste de marché. Donne les stocks actuellement populaires sur Reddit et Stocktwits."
+                    },
+                    {
+                        "role": "user",
+                        "content": "Donne les 5 stocks les plus discutés actuellement sur Reddit (WallStreetBets) et Stocktwits. Format clair, pas d'explication."
+                    }
+                ],
+                max_tokens=150
+            )
+
+            await message.channel.send(
+                "🔥 TREND RETAIL\n\n" +
+                response.choices[0].message.content +
+                "\n\n⚠️ À valider avec !analyse"
+            )
+
+        except Exception as e:
+            await message.channel.send("Erreur trend.")
+
+    # ======================
+    # 📊 ANALYSE TECHNIQUE
+    # ======================
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
 
@@ -54,14 +93,12 @@ async def on_message(message):
 
             closes = [c["c"] for c in data["results"]]
 
-            # ======================
             # RSI
-            # ======================
             gains = []
             losses = []
 
             for i in range(1, len(closes)):
-                diff = closes[i] - closes[i - 1]
+                diff = closes[i] - closes[i-1]
                 if diff > 0:
                     gains.append(diff)
                     losses.append(0)
@@ -78,9 +115,7 @@ async def on_message(message):
                 rs = avg_gain / avg_loss
                 rsi = 100 - (100 / (1 + rs))
 
-            # ======================
             # EMA
-            # ======================
             def ema(prices, period):
                 multiplier = 2 / (period + 1)
                 ema_value = prices[0]
@@ -95,14 +130,8 @@ async def on_message(message):
 
             last_price = closes[-1]
 
-            # ======================
-            # STRUCTURE
-            # ======================
             structure = "haussière" if last_price > ema20 else "fragile"
 
-            # ======================
-            # MOMENTUM
-            # ======================
             if rsi > 60:
                 momentum = "fort"
             elif rsi > 50:
@@ -110,26 +139,18 @@ async def on_message(message):
             else:
                 momentum = "faible"
 
-            # ======================
             # SCORE
-            # ======================
             score = 0
-
             if last_price > ema20:
                 score += 30
-
             if ema9 > ema20:
                 score += 25
-
             if rsi > 50:
                 score += 25
-
             if last_price > ema9:
                 score += 20
 
-            # ======================
             # BIAS
-            # ======================
             if score >= 75:
                 bias = "Bullish fort"
             elif score >= 50:
@@ -139,34 +160,21 @@ async def on_message(message):
             else:
                 bias = "Bearish"
 
-            # ======================
             # SCÉNARIO
-            # ======================
             if score >= 70:
                 scenario = "continuation haussière probable"
             elif score >= 50:
-                scenario = "consolidation / range"
+                scenario = "consolidation"
             else:
-                scenario = "pression baissière possible"
+                scenario = "pression baissière"
 
-            # ======================
             # PROBABILITÉ
-            # ======================
             probability = int(40 + (score * 0.4))
-
             if probability > 85:
                 probability = 85
 
-            # ======================
-            # RISQUE
-            # ======================
             risk = "perte EMA20 = affaiblissement"
-            if last_price < ema20:
-                risk = "tendance fragile, prudence"
 
-            # ======================
-            # OUTPUT FINAL
-            # ======================
             await message.channel.send(
                 f"{ticker}\n\n"
                 f"Prix: {last_price:.2f}\n"
@@ -183,8 +191,10 @@ async def on_message(message):
             )
 
         except Exception as e:
-            print("ERREUR:", e)
+            print(e)
             await message.channel.send("Erreur analyse.")
 
-# 🚀 RUN
+# ======================
+# RUN
+# ======================
 bot.run(DISCORD_TOKEN)
