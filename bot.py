@@ -15,6 +15,9 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = discord.Client(intents=intents)
 
+# 🧠 MÉMOIRE PAR UTILISATEUR
+memory = {}
+
 # ======================
 # READY
 # ======================
@@ -31,6 +34,8 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
+    user_id = str(message.author.id)
+
     # ======================
     # TEST
     # ======================
@@ -39,7 +44,7 @@ async def on_message(message):
         return
 
     # ======================
-    # 🔥 TREND
+    # TREND
     # ======================
     if message.content == "!trend":
         await message.channel.send("Scan des tendances retail...")
@@ -49,24 +54,21 @@ async def on_message(message):
                 model="gpt-4.1-mini",
                 messages=[
                     {"role": "system", "content": "Donne les stocks populaires Reddit et Stocktwits."},
-                    {"role": "user", "content": "Donne 5 stocks populaires Reddit et 5 Stocktwits."}
+                    {"role": "user", "content": "Donne 5 stocks Reddit et 5 Stocktwits."}
                 ],
                 max_tokens=150
             )
 
-            await message.channel.send(
-                "🔥 TREND RETAIL\n\n" +
-                response.choices[0].message.content +
-                "\n\n⚠️ À valider avec !analyse"
-            )
-
+            await message.channel.send("🔥 TREND RETAIL\n\n" +
+                                       response.choices[0].message.content +
+                                       "\n\n⚠️ À valider avec !analyse")
         except:
             await message.channel.send("Erreur trend.")
 
         return
 
     # ======================
-    # 📊 ANALYSE
+    # ANALYSE
     # ======================
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
@@ -91,7 +93,6 @@ async def on_message(message):
             # RSI
             gains = []
             losses = []
-
             for i in range(1, len(closes)):
                 diff = closes[i] - closes[i-1]
                 if diff > 0:
@@ -104,81 +105,40 @@ async def on_message(message):
             avg_gain = sum(gains[-14:]) / 14
             avg_loss = sum(losses[-14:]) / 14
 
-            if avg_loss == 0:
-                rsi = 100
-            else:
-                rs = avg_gain / avg_loss
-                rsi = 100 - (100 / (1 + rs))
+            rsi = 100 if avg_loss == 0 else 100 - (100 / (1 + (avg_gain / avg_loss)))
 
             # EMA
             def ema(prices, period):
                 multiplier = 2 / (period + 1)
-                ema_value = prices[0]
-
-                for price in prices:
-                    ema_value = (price - ema_value) * multiplier + ema_value
-
-                return ema_value
+                ema_val = prices[0]
+                for p in prices:
+                    ema_val = (p - ema_val) * multiplier + ema_val
+                return ema_val
 
             ema9 = ema(closes[-20:], 9)
             ema20 = ema(closes[-20:], 20)
+            price = closes[-1]
 
-            last_price = closes[-1]
-
-            structure = "haussière" if last_price > ema20 else "fragile"
-
-            if rsi > 60:
-                momentum = "fort"
-            elif rsi > 50:
-                momentum = "positif"
-            else:
-                momentum = "faible"
+            structure = "haussière" if price > ema20 else "fragile"
+            momentum = "fort" if rsi > 60 else "positif" if rsi > 50 else "faible"
 
             score = 0
-            if last_price > ema20:
-                score += 30
-            if ema9 > ema20:
-                score += 25
-            if rsi > 50:
-                score += 25
-            if last_price > ema9:
-                score += 20
+            if price > ema20: score += 30
+            if ema9 > ema20: score += 25
+            if rsi > 50: score += 25
+            if price > ema9: score += 20
 
-            if score >= 75:
-                bias = "Bullish fort"
-            elif score >= 50:
-                bias = "Bullish modéré"
-            elif score >= 30:
-                bias = "Neutre"
-            else:
-                bias = "Bearish"
+            bias = "Bullish fort" if score >= 75 else "Bullish modéré" if score >= 50 else "Neutre" if score >= 30 else "Bearish"
+            scenario = "continuation haussière" if score >= 70 else "consolidation" if score >= 50 else "pression baissière"
 
-            if score >= 70:
-                scenario = "continuation haussière"
-            elif score >= 50:
-                scenario = "consolidation"
-            else:
-                scenario = "pression baissière"
-
-            probability = int(40 + (score * 0.4))
-            if probability > 85:
-                probability = 85
-
-            risk = "perte EMA20 = affaiblissement"
+            probability = min(85, int(40 + score * 0.4))
 
             await message.channel.send(
-                f"{ticker}\n\n"
-                f"Prix: {last_price:.2f}\n"
-                f"RSI: {rsi:.1f}\n\n"
-                f"EMA9: {ema9:.2f}\n"
-                f"EMA20: {ema20:.2f}\n\n"
-                f"Structure: {structure}\n"
-                f"Momentum: {momentum}\n\n"
-                f"Score: {score}/100\n"
-                f"Biais: {bias}\n\n"
-                f"Scénario: {scenario}\n"
-                f"Probabilité: {probability}%\n\n"
-                f"Risque: {risk}"
+                f"{ticker}\n\nPrix: {price:.2f}\nRSI: {rsi:.1f}\n\n"
+                f"EMA9: {ema9:.2f}\nEMA20: {ema20:.2f}\n\n"
+                f"Structure: {structure}\nMomentum: {momentum}\n\n"
+                f"Score: {score}/100\nBiais: {bias}\n\n"
+                f"Scénario: {scenario}\nProbabilité: {probability}%"
             )
 
         except:
@@ -187,98 +147,63 @@ async def on_message(message):
         return
 
     # ======================
-    # WHY
+    # CHAT AVEC MÉMOIRE (MENTION)
     # ======================
-    if message.content.startswith("!why"):
-        ticker = message.content.replace("!why", "").strip().upper()
+    if bot.user in message.mentions:
 
-        await message.channel.send("Analyse des raisons...")
+        question = message.content.replace(f"<@{bot.user.id}>", "")
+        question = question.replace(f"<@!{bot.user.id}>", "").strip()
+
+        if question == "":
+            await message.channel.send("Pose-moi une question 😊")
+            return
+
+        await message.channel.send("Réflexion...")
+
+        # 🔥 MÉMOIRE
+        if user_id not in memory:
+            memory[user_id] = []
+
+        memory[user_id].append({"role": "user", "content": question})
+
+        # Limite mémoire (10 messages)
+        memory[user_id] = memory[user_id][-10:]
 
         try:
             response = client.chat.completions.create(
                 model="gpt-4.1-mini",
                 messages=[
-                    {"role": "system", "content": "Analyste marché"},
-                    {"role": "user", "content": f"Pourquoi {ticker} bouge ?"}
-                ]
+                    {
+                        "role": "system",
+                        "content": """Tu es un trader professionnel style TEA.
+
+Règles :
+- Pas de bullshit
+- Réponse courte, directe
+- Toujours orienté décision
+- Toujours parler en probabilité
+- Prioriser structure, momentum, contexte
+
+Style :
+- Punchy
+- Clair
+- Trading mindset
+"""
+                    }
+                ] + memory[user_id],
+                max_tokens=200
             )
 
-            await message.channel.send(response.choices[0].message.content)
+            reply = response.choices[0].message.content
 
-        except:
-            await message.channel.send("Erreur why.")
+            # Sauvegarde réponse
+            memory[user_id].append({"role": "assistant", "content": reply})
 
-        return
+            await message.channel.send(reply)
 
-    # ======================
-    # NEWS
-    # ======================
-    if message.content.startswith("!news"):
-        ticker = message.content.replace("!news", "").strip().upper()
-
-        await message.channel.send("Recherche news...")
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[
-                    {"role": "system", "content": "News financières"},
-                    {"role": "user", "content": f"News importantes pour {ticker}"}
-                ]
-            )
-
-            await message.channel.send(response.choices[0].message.content)
-
-        except:
-            await message.channel.send("Erreur news.")
-
-        return
-
-    # ======================
-    # SETUP
-    # ======================
-    if message.content.startswith("!setup"):
-        ticker = message.content.replace("!setup", "").strip().upper()
-
-        await message.channel.send("Analyse setup...")
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[
-                    {"role": "system", "content": "Trader pro"},
-                    {"role": "user", "content": f"Setup trading pour {ticker}"}
-                ]
-            )
-
-            await message.channel.send(response.choices[0].message.content)
-
-        except:
-            await message.channel.send("Erreur setup.")
-
-        return
-
-    # ======================
-    # INFO
-    # ======================
-    if message.content.startswith("!info"):
-        ticker = message.content.replace("!info", "").strip().upper()
-
-        await message.channel.send("Recherche info...")
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[
-                    {"role": "system", "content": "Explique entreprise"},
-                    {"role": "user", "content": f"Que fait {ticker}"}
-                ]
-            )
-
-            await message.channel.send(response.choices[0].message.content)
-
-        except:
-            await message.channel.send("Erreur info.")
+        except Exception as e:
+            print(e)
+            await message.channel.send("Erreur réponse.")
 
         return
 
