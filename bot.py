@@ -22,33 +22,23 @@ bot = discord.Client(intents=intents)
 memory = {}
 
 # ======================
-# 📰 NEWS SCORING
+# 🧠 NEWS SCORING
 # ======================
 def score_news(title):
-
-    title = title.lower()
-
+    t = title.lower()
     score = 0
 
-    # 🔥 HIGH IMPACT
-    if any(k in title for k in ["earnings", "guidance", "forecast"]):
+    if any(k in t for k in ["earnings", "guidance", "forecast"]):
         score += 5
-
-    if any(k in title for k in ["deal", "contract", "partnership", "meta", "ai"]):
+    if any(k in t for k in ["deal", "contract", "partnership", "ai", "meta"]):
         score += 5
-
-    if any(k in title for k in ["acquisition", "merger"]):
+    if any(k in t for k in ["acquisition", "merger"]):
         score += 5
-
-    # ⚡ MEDIUM
-    if any(k in title for k in ["upgrade", "downgrade"]):
+    if any(k in t for k in ["upgrade", "downgrade"]):
         score += 3
-
-    if any(k in title for k in ["revenue", "profit"]):
+    if any(k in t for k in ["revenue", "profit"]):
         score += 3
-
-    # ❌ LOW / NOISE
-    if any(k in title for k in ["opinion", "analysis", "watch", "outlook"]):
+    if any(k in t for k in ["opinion", "analysis", "watch", "outlook"]):
         score -= 2
 
     return score
@@ -57,27 +47,48 @@ def score_news(title):
 def get_best_news(ticker):
     try:
         url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={ticker}&mode=artlist&maxrecords=10&format=json"
-        r = requests.get(url)
-        data = r.json()
+        data = requests.get(url).json()
 
         if "articles" not in data:
-            return None
+            return None, []
 
         best = None
         best_score = 0
+        titles = []
 
         for a in data["articles"]:
             title = a["title"]
-            s = score_news(title)
+            titles.append(title)
 
+            s = score_news(title)
             if s > best_score:
                 best_score = s
                 best = title
 
-        return best if best_score > 0 else None
+        return best if best_score > 0 else None, titles
 
     except:
-        return None
+        return None, []
+
+# ======================
+# 🐦 TWITTER SENTIMENT (proxy)
+# ======================
+def get_twitter_sentiment(titles):
+
+    combined = " ".join(titles).lower()
+
+    bullish_words = ["buy", "bull", "moon", "breakout", "strong", "rally"]
+    bearish_words = ["sell", "bear", "dump", "crash", "weak"]
+
+    bull_score = sum(combined.count(w) for w in bullish_words)
+    bear_score = sum(combined.count(w) for w in bearish_words)
+
+    if bull_score > bear_score:
+        return "bullish"
+    elif bear_score > bull_score:
+        return "bearish"
+    else:
+        return "neutral"
 
 # ======================
 # READY
@@ -87,7 +98,7 @@ async def on_ready():
     print("BOT CONNECTÉ")
 
 # ======================
-# MESSAGE
+# MESSAGE HANDLER
 # ======================
 @bot.event
 async def on_message(message):
@@ -105,9 +116,10 @@ async def on_message(message):
         return
 
     # ======================
-    # ANALYSE
+    # ANALYSE TECHNIQUE
     # ======================
     if message.content.startswith("!analyse"):
+
         ticker = message.content.replace("!analyse", "").strip().upper()
 
         await message.channel.send("Analyse en cours...")
@@ -160,7 +172,7 @@ async def on_message(message):
         return
 
     # ======================
-    # 💬 CHAT + NEWS SCORING
+    # 💬 CHAT + NEWS + SENTIMENT
     # ======================
     if bot.user in message.mentions:
 
@@ -179,17 +191,19 @@ async def on_message(message):
         memory[user_id].append({"role": "user", "content": question})
         memory[user_id] = memory[user_id][-10:]
 
-        # 🔥 detect ticker
+        # detect ticker
         ticker = None
         for w in question.split():
             if w.isupper() and len(w) <= 5:
                 ticker = w
                 break
 
-        best_news = get_best_news(ticker) if ticker else None
+        best_news, titles = get_best_news(ticker) if ticker else (None, [])
+
+        sentiment = get_twitter_sentiment(titles)
 
         if best_news is None:
-            news_text = "Aucune news dominante. Mouvement probablement lié au momentum ou positioning."
+            news_text = "Aucune news dominante."
         else:
             news_text = best_news
 
@@ -203,9 +217,10 @@ async def on_message(message):
 Tu dois expliquer un mouvement de marché.
 
 Règles :
-- Utiliser uniquement la news fournie
+- Utiliser la news dominante si elle existe
+- Sinon utiliser le sentiment (Twitter)
+- Sinon expliquer que c’est du momentum
 - Ne jamais inventer
-- Si pas de news → dire momentum
 - Répondre comme un trader réel
 """
                 },
@@ -216,6 +231,9 @@ Question: {question}
 
 News dominante:
 {news_text}
+
+Sentiment:
+{sentiment}
 """
                 }
             ],
