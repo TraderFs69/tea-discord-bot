@@ -16,15 +16,24 @@ async def on_ready():
 async def on_message(message):
     print("MESSAGE REÇU:", message.content)
 
+    # Ignore les messages du bot
     if message.author == bot.user:
         return
 
-    await message.channel.send("Je fonctionne")
+    # Commande test
+    if message.content == "!test":
+        await message.channel.send("Bot OK")
+        return
 
-bot.run(DISCORD_TOKEN)
-
+    # Commande analyse (simple pour tester)
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
 
+        if ticker == "":
+            await message.channel.send("Ex: !analyse TSLA")
+            return
+
         await message.channel.send(f"Analyse reçue pour {ticker}")
         return
+
+bot.run(DISCORD_TOKEN)
