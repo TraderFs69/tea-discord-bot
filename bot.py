@@ -13,7 +13,6 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # ⚙️ Discord
 intents = discord.Intents.default()
 intents.message_content = True
-
 bot = discord.Client(intents=intents)
 
 # ======================
@@ -24,7 +23,7 @@ async def on_ready():
     print("BOT CONNECTÉ")
 
 # ======================
-# MESSAGE
+# MESSAGE HANDLER
 # ======================
 @bot.event
 async def on_message(message):
@@ -40,7 +39,7 @@ async def on_message(message):
         return
 
     # ======================
-    # 🔥 TREND RETAIL
+    # 🔥 TREND
     # ======================
     if message.content == "!trend":
         await message.channel.send("Scan des tendances retail...")
@@ -49,14 +48,8 @@ async def on_message(message):
             response = client.chat.completions.create(
                 model="gpt-4.1-mini",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "Tu es un analyste de marché. Donne les stocks actuellement populaires sur Reddit et Stocktwits."
-                    },
-                    {
-                        "role": "user",
-                        "content": "Donne les 5 stocks les plus discutés actuellement sur Reddit (WallStreetBets) et Stocktwits. Format clair, pas d'explication."
-                    }
+                    {"role": "system", "content": "Donne les stocks populaires Reddit et Stocktwits."},
+                    {"role": "user", "content": "Donne 5 stocks populaires Reddit et 5 Stocktwits."}
                 ],
                 max_tokens=150
             )
@@ -67,11 +60,13 @@ async def on_message(message):
                 "\n\n⚠️ À valider avec !analyse"
             )
 
-        except Exception as e:
+        except:
             await message.channel.send("Erreur trend.")
 
+        return
+
     # ======================
-    # 📊 ANALYSE TECHNIQUE
+    # 📊 ANALYSE
     # ======================
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
@@ -139,7 +134,6 @@ async def on_message(message):
             else:
                 momentum = "faible"
 
-            # SCORE
             score = 0
             if last_price > ema20:
                 score += 30
@@ -150,7 +144,6 @@ async def on_message(message):
             if last_price > ema9:
                 score += 20
 
-            # BIAS
             if score >= 75:
                 bias = "Bullish fort"
             elif score >= 50:
@@ -160,15 +153,13 @@ async def on_message(message):
             else:
                 bias = "Bearish"
 
-            # SCÉNARIO
             if score >= 70:
-                scenario = "continuation haussière probable"
+                scenario = "continuation haussière"
             elif score >= 50:
                 scenario = "consolidation"
             else:
                 scenario = "pression baissière"
 
-            # PROBABILITÉ
             probability = int(40 + (score * 0.4))
             if probability > 85:
                 probability = 85
@@ -190,9 +181,106 @@ async def on_message(message):
                 f"Risque: {risk}"
             )
 
-        except Exception as e:
-            print(e)
+        except:
             await message.channel.send("Erreur analyse.")
+
+        return
+
+    # ======================
+    # WHY
+    # ======================
+    if message.content.startswith("!why"):
+        ticker = message.content.replace("!why", "").strip().upper()
+
+        await message.channel.send("Analyse des raisons...")
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "system", "content": "Analyste marché"},
+                    {"role": "user", "content": f"Pourquoi {ticker} bouge ?"}
+                ]
+            )
+
+            await message.channel.send(response.choices[0].message.content)
+
+        except:
+            await message.channel.send("Erreur why.")
+
+        return
+
+    # ======================
+    # NEWS
+    # ======================
+    if message.content.startswith("!news"):
+        ticker = message.content.replace("!news", "").strip().upper()
+
+        await message.channel.send("Recherche news...")
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "system", "content": "News financières"},
+                    {"role": "user", "content": f"News importantes pour {ticker}"}
+                ]
+            )
+
+            await message.channel.send(response.choices[0].message.content)
+
+        except:
+            await message.channel.send("Erreur news.")
+
+        return
+
+    # ======================
+    # SETUP
+    # ======================
+    if message.content.startswith("!setup"):
+        ticker = message.content.replace("!setup", "").strip().upper()
+
+        await message.channel.send("Analyse setup...")
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "system", "content": "Trader pro"},
+                    {"role": "user", "content": f"Setup trading pour {ticker}"}
+                ]
+            )
+
+            await message.channel.send(response.choices[0].message.content)
+
+        except:
+            await message.channel.send("Erreur setup.")
+
+        return
+
+    # ======================
+    # INFO
+    # ======================
+    if message.content.startswith("!info"):
+        ticker = message.content.replace("!info", "").strip().upper()
+
+        await message.channel.send("Recherche info...")
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "system", "content": "Explique entreprise"},
+                    {"role": "user", "content": f"Que fait {ticker}"}
+                ]
+            )
+
+            await message.channel.send(response.choices[0].message.content)
+
+        except:
+            await message.channel.send("Erreur info.")
+
+        return
 
 # ======================
 # RUN
