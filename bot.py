@@ -21,26 +21,27 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # TEST
     if message.content == "!test":
         await message.channel.send("Bot OK")
         return
 
-    # ANALYSE (BIEN INDENTÉE)
-   if message.content.startswith("!analyse"):
-    ticker = message.content.replace("!analyse", "").strip().upper()
+    if message.content.startswith("!analyse"):
+        ticker = message.content.replace("!analyse", "").strip().upper()
 
-    await message.channel.send("Test Polygon en cours...")
+        if ticker == "":
+            await message.channel.send("Ex: !analyse AAPL")
+            return
 
-    try:
-        url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/5?adjusted=true&apiKey={POLYGON_API_KEY}"
-        r = requests.get(url)
+        await message.channel.send("Test Polygon en cours...")
 
-        await message.channel.send(f"Status code: {r.status_code}")
+        try:
+            url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/5?adjusted=true&apiKey={POLYGON_API_KEY}"
+            r = requests.get(url)
 
-        await message.channel.send(r.text[:500])  # montre réponse brute
+            await message.channel.send(f"Status code: {r.status_code}")
+            await message.channel.send(r.text[:500])
 
-    except Exception as e:
-        await message.channel.send(f"Erreur: {str(e)}")
+        except Exception as e:
+            await message.channel.send(f"Erreur: {str(e)}")
 
 bot.run(DISCORD_TOKEN)
