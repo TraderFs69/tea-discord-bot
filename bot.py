@@ -34,41 +34,37 @@ async def on_message(message):
         return
 
     if message.content.startswith("!analyse"):
-        ticker = message.content.replace("!analyse", "").strip().upper()
+    ticker = message.content.replace("!analyse", "").strip().upper()
 
-        if ticker == "":
-            await message.channel.send("Ex: !analyse AAPL")
+    if ticker == "":
+        await message.channel.send("Ex: !analyse AAPL")
+        return
+
+    await message.channel.send(f"Récupération des données pour {ticker}...")
+
+    try:
+        url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/30?adjusted=true&apiKey={POLYGON_API_KEY}"
+        r = requests.get(url)
+
+        print("STATUS CODE:", r.status_code)
+
+        text = r.text
+        print("RAW RESPONSE:", text)
+
+        data = r.json()
+
+        if "results" not in data:
+            await message.channel.send("Erreur Polygon ou clé API invalide.")
             return
 
-        await message.channel.send(f"Récupération des données pour {ticker}...")
+        closes = [c["c"] for c in data["results"]]
+        last_price = closes[-1]
 
-        try:
-            url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/30?adjusted=true&apiKey={POLYGON_API_KEY}"
-            r = requests.get(url)
+        await message.channel.send(f"{ticker} prix actuel: {last_price:.2f}")
 
-            print("STATUS CODE:", r.status_code)
-
-            data = r.json()
-            print("DATA:", data)
-
-            # 🔥 CHECK 1 : clé API
-            if "status" in data and data["status"] == "ERROR":
-                await message.channel.send("Erreur Polygon API (clé ou accès).")
-                return
-
-            # 🔥 CHECK 2 : pas de résultats
-            if "results" not in data or len(data["results"]) == 0:
-                await message.channel.send("Aucune donnée disponible pour ce ticker.")
-                return
-
-            closes = [c["c"] for c in data["results"]]
-            last_price = closes[-1]
-
-            await message.channel.send(f"{ticker} prix actuel: {last_price:.2f}")
-
-        except Exception as e:
-            print("ERREUR:", e)
-            await message.channel.send("Erreur analyse.")
-
+    except Exception as e:
+        print("ERREUR:", str(e))
+        await message.channel.send("Erreur analyse.")
+        
 # 🚀 Lancement
 bot.run(DISCORD_TOKEN)
