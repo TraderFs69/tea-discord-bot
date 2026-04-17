@@ -26,16 +26,13 @@ async def on_ready():
 async def on_message(message):
     print("MESSAGE:", message.content)
 
-    # Ignore messages du bot
     if message.author == bot.user:
         return
 
-    # 🔹 TEST
     if message.content == "!test":
         await message.channel.send("Bot OK")
         return
 
-    # 🔹 ANALYSE UNIQUE (IMPORTANT)
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
 
@@ -48,24 +45,25 @@ async def on_message(message):
         try:
             url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/30?adjusted=true&apiKey={POLYGON_API_KEY}"
             r = requests.get(url)
+
+            print("STATUS CODE:", r.status_code)
+
             data = r.json()
+            print("DATA:", data)
 
-            print("DATA POLYGON:", data)
+            # 🔥 CHECK 1 : clé API
+            if "status" in data and data["status"] == "ERROR":
+                await message.channel.send("Erreur Polygon API (clé ou accès).")
+                return
 
-            # Vérification données
-            if "results" not in data:
-                await message.channel.send("Erreur données Polygon.")
+            # 🔥 CHECK 2 : pas de résultats
+            if "results" not in data or len(data["results"]) == 0:
+                await message.channel.send("Aucune donnée disponible pour ce ticker.")
                 return
 
             closes = [c["c"] for c in data["results"]]
-
-            if len(closes) == 0:
-                await message.channel.send("Pas de données.")
-                return
-
             last_price = closes[-1]
 
-            # 🔥 Réponse propre
             await message.channel.send(f"{ticker} prix actuel: {last_price:.2f}")
 
         except Exception as e:
