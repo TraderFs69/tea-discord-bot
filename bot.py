@@ -2,7 +2,6 @@ import discord
 import os
 import requests
 import pandas as pd
-import numpy as np
 from openai import OpenAI
 
 # 🔐 KEYS
@@ -20,16 +19,21 @@ bot = discord.Client(intents=intents)
 # 📊 DATA
 # ======================
 def get_data(ticker):
-    url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/200?adjusted=true&apiKey={POLYGON_API_KEY}"
-    r = requests.get(url)
-    data = r.json()
+    try:
+        url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/200?adjusted=true&apiKey={POLYGON_API_KEY}"
+        r = requests.get(url)
+        data = r.json()
 
-    if "results" not in data:
+        if "results" not in data:
+            return None
+
+        df = pd.DataFrame(data["results"])
+        df["close"] = df["c"]
+        return df
+
+    except Exception as e:
+        print("ERREUR DATA:", e)
         return None
-
-    df = pd.DataFrame(data["results"])
-    df["close"] = df["c"]
-    return df
 
 # ======================
 # 📈 INDICATORS
@@ -52,38 +56,29 @@ def calculate_indicators(df):
     return df
 
 # ======================
-# 🧠 SCORING
+# 🧠 SCORE
 # ======================
 def score_stock(df):
     last = df.iloc[-1]
-
     score = 0
 
-    # Trend
     if last["close"] > last["ema50"]:
         score += 30
-
-    # Structure
     if last["ema9"] > last["ema20"]:
         score += 25
-
-    # Momentum
     if last["rsi"] > 50:
         score += 20
-
-    # Strength
     if last["close"] > last["ema20"]:
         score += 25
 
     return score
 
 # ======================
-# 📊 ANALYSE STRUCTURÉE
+# 📊 ANALYSE
 # ======================
 def build_analysis(df, score):
     last = df.iloc[-1]
 
-    # Bias
     if score >= 75:
         bias = "Bullish fort"
     elif score >= 50:
@@ -93,29 +88,17 @@ def build_analysis(df, score):
     else:
         bias = "Bearish"
 
-    # Structure logique (PAS IA)
-    if last["close"] > last["ema20"]:
-        structure = "au-dessus EMA20 (structure haussière)"
-    else:
-        structure = "sous EMA20 (structure fragile)"
+    structure = "au-dessus EMA20" if last["close"] > last["ema20"] else "sous EMA20"
+    momentum = "fort" if last["rsi"] > 60 else "positif" if last["rsi"] > 50 else "faible"
 
-    # Momentum logique
-    if last["rsi"] > 60:
-        momentum = "fort"
-    elif last["rsi"] > 50:
-        momentum = "positif"
-    else:
-        momentum = "faible"
+    scenario = (
+        "continuation haussière probable"
+        if score >= 60
+        else "consolidation"
+        if score >= 40
+        else "pression baissière"
+    )
 
-    # Scénario logique
-    if score >= 60:
-        scenario = "continuation haussière probable"
-    elif score >= 40:
-        scenario = "range / consolidation"
-    else:
-        scenario = "pression baissière probable"
-
-    # Risque logique
     risk = "perte EMA20 = affaiblissement"
 
     return {
@@ -125,7 +108,7 @@ def build_analysis(df, score):
         "scenario": scenario,
         "risk": risk,
         "price": last["close"],
-        "rsi": last["rsi"]
+        "rsi": last["rsi"],
     }
 
 # ======================
@@ -137,9 +120,21 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
+    print("MESSAGE REÇU:", message.content)  # 🔥 DEBUG
+
     if message.author == bot.user:
         return
 
+    # ======================
+    # 🔹 TEST SIMPLE
+    # ======================
+    if message.content == "!test":
+        await message.channel.send("Bot OK")
+        return
+
+    # ======================
+    # 🔹 ANALYSE
+    # ======================
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
 
@@ -147,17 +142,18 @@ async def on_message(message):
             await message.channel.send("Ex: !analyse TSLA")
             return
 
+        await message.channel.send(f"Analyse en cours: {ticker}...")
+
         df = get_data(ticker)
 
         if df is None:
-            await message.channel.send("Erreur données.")
+            await message.channel.send("Erreur récupération données.")
             return
 
         df = calculate_indicators(df)
         score = score_stock(df)
         analysis = build_analysis(df, score)
 
-        # 🔥 FORMAT FINAL (100% contrôlé)
         reply = f"""
 📊 {ticker} | Score: {score}/100 | {analysis['bias']}
 
@@ -173,4 +169,5 @@ Risque: {analysis['risk']}
 
         await message.channel.send(reply[:1900])
 
+# 🚀 RUN
 bot.run(DISCORD_TOKEN)
