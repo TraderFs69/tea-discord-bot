@@ -19,26 +19,35 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = discord.Client(intents=intents)
 
-# ======================
-# 🧠 MEMORY
-# ======================
 memory = {}
 
 # ======================
-# 📰 GDELT NEWS FUNCTION
+# 📰 GDELT + SMART FILTER
 # ======================
-def get_news_gdelt(ticker):
+def get_filtered_news(ticker):
     try:
-        url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={ticker}&mode=artlist&maxrecords=5&format=json"
+        url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={ticker}&mode=artlist&maxrecords=10&format=json"
         r = requests.get(url)
         data = r.json()
 
-        articles = []
-        if "articles" in data:
-            for a in data["articles"]:
-                articles.append(a["title"])
+        if "articles" not in data:
+            return []
 
-        return articles
+        keywords = [
+            "earnings", "guidance", "forecast", "upgrade",
+            "downgrade", "deal", "acquisition", "AI",
+            "revenue", "profit", "lawsuit", "partnership"
+        ]
+
+        filtered = []
+
+        for a in data["articles"]:
+            title = a["title"].lower()
+
+            if any(k in title for k in keywords):
+                filtered.append(a["title"])
+
+        return filtered[:5]
 
     except:
         return []
@@ -51,7 +60,7 @@ async def on_ready():
     print("BOT CONNECTÉ")
 
 # ======================
-# MESSAGE HANDLER
+# MESSAGE
 # ======================
 @bot.event
 async def on_message(message):
@@ -69,56 +78,39 @@ async def on_message(message):
         return
 
     # ======================
-    # 🔥 TREND
+    # TREND
     # ======================
     if message.content == "!trend":
         await message.channel.send("Scan des tendances retail...")
 
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1",
-                messages=[
-                    {"role": "system", "content": "Donne les stocks populaires Reddit et Stocktwits."},
-                    {"role": "user", "content": "Donne 5 stocks Reddit et 5 Stocktwits."}
-                ],
-                max_tokens=150
-            )
+        response = client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[
+                {"role": "system", "content": "Stocks populaires Reddit et Stocktwits"},
+                {"role": "user", "content": "Donne 5 stocks Reddit et 5 Stocktwits"}
+            ]
+        )
 
-            await message.channel.send(
-                "🔥 TREND RETAIL\n\n" +
-                response.choices[0].message.content +
-                "\n\n⚠️ À valider avec !analyse"
-            )
-
-        except:
-            await message.channel.send("Erreur trend.")
+        await message.channel.send("🔥 TREND RETAIL\n\n" +
+            response.choices[0].message.content +
+            "\n\n⚠️ À valider avec !analyse")
 
         return
 
     # ======================
-    # 📊 ANALYSE TECHNIQUE
+    # ANALYSE
     # ======================
     if message.content.startswith("!analyse"):
         ticker = message.content.replace("!analyse", "").strip().upper()
-
-        if ticker == "":
-            await message.channel.send("Ex: !analyse AAPL")
-            return
 
         await message.channel.send("Analyse en cours...")
 
         try:
             url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/30?adjusted=true&sort=asc&limit=30&apiKey={POLYGON_API_KEY}"
-            r = requests.get(url)
-            data = r.json()
-
-            if "results" not in data or len(data["results"]) < 20:
-                await message.channel.send("Pas assez de données.")
-                return
+            data = requests.get(url).json()
 
             closes = [c["c"] for c in data["results"]]
 
-            # RSI
             gains, losses = [], []
             for i in range(1, len(closes)):
                 diff = closes[i] - closes[i-1]
@@ -127,22 +119,18 @@ async def on_message(message):
 
             avg_gain = sum(gains[-14:]) / 14
             avg_loss = sum(losses[-14:]) / 14
-            rsi = 100 if avg_loss == 0 else 100 - (100 / (1 + (avg_gain / avg_loss)))
+            rsi = 100 if avg_loss == 0 else 100 - (100 / (1 + avg_gain/avg_loss))
 
-            # EMA
             def ema(prices, period):
-                m = 2 / (period + 1)
+                m = 2/(period+1)
                 val = prices[0]
                 for p in prices:
-                    val = (p - val) * m + val
+                    val = (p - val)*m + val
                 return val
 
             ema9 = ema(closes[-20:], 9)
             ema20 = ema(closes[-20:], 20)
             price = closes[-1]
-
-            structure = "haussière" if price > ema20 else "fragile"
-            momentum = "fort" if rsi > 60 else "positif" if rsi > 50 else "faible"
 
             score = 0
             if price > ema20: score += 30
@@ -150,23 +138,21 @@ async def on_message(message):
             if rsi > 50: score += 25
             if price > ema9: score += 20
 
-            probability = min(85, int(40 + score * 0.4))
+            prob = min(85, int(40 + score*0.4))
 
             await message.channel.send(
-                f"{ticker}\n\nPrix: {price:.2f}\nRSI: {rsi:.1f}\n\n"
-                f"EMA9: {ema9:.2f}\nEMA20: {ema20:.2f}\n\n"
-                f"Structure: {structure}\nMomentum: {momentum}\n\n"
-                f"Score: {score}/100\nProbabilité: {probability}%"
+                f"{ticker}\nPrix: {price:.2f}\nRSI: {rsi:.1f}\n"
+                f"EMA9: {ema9:.2f} | EMA20: {ema20:.2f}\n"
+                f"Score: {score}/100 | Probabilité: {prob}%"
             )
 
-        except Exception as e:
-            print(e)
+        except:
             await message.channel.send("Erreur analyse.")
 
         return
 
     # ======================
-    # 💬 CHAT + NEWS TEMPS RÉEL
+    # 💬 CHAT SMART FILTER
     # ======================
     if bot.user in message.mentions:
 
@@ -177,10 +163,6 @@ async def on_message(message):
 
         question = question.strip()
 
-        if question == "":
-            await message.channel.send("Pose-moi une question 😊")
-            return
-
         await message.channel.send("Analyse en cours...")
 
         if user_id not in memory:
@@ -189,61 +171,56 @@ async def on_message(message):
         memory[user_id].append({"role": "user", "content": question})
         memory[user_id] = memory[user_id][-10:]
 
-        # 🔥 DETECT TICKER
-        words = question.split()
+        # 🔥 detect ticker
         ticker = None
-        for w in words:
-            if w.isupper() and len(w) <= 5:
-                ticker = w
+        for word in question.split():
+            if word.isupper() and len(word) <= 5:
+                ticker = word
                 break
 
-        news_text = ""
-        if ticker:
-            news = get_news_gdelt(ticker)
+        news = get_filtered_news(ticker) if ticker else []
+
+        if len(news) == 0:
+            news_text = "Aucune news pertinente trouvée."
+        else:
             news_text = "\n".join(news)
 
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """Tu es un trader professionnel.
+        response = client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[
+                {
+                    "role": "system",
+                    "content": """Tu es un trader professionnel.
 
-Tu dois identifier la cause PRINCIPALE d’un mouvement.
+Tu dois identifier la cause réelle d’un mouvement.
 
-Méthode :
-1. Trouver la news dominante
-2. Vérifier le momentum
-3. Voir si c’est du positioning ou du fondamental
-
-Réponds comme un trader expérimenté, pas comme un journaliste.
+Règles :
+- Ne jamais inventer
+- Si aucune news → dire que c’est du momentum
+- Toujours distinguer news vs positioning vs technique
+- Répondre comme un trader réel
 """
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""
+                },
+                {
+                    "role": "user",
+                    "content": f"""
 Question: {question}
 
-News récentes:
+News:
 {news_text}
 
-Explique la vraie raison du mouvement.
+Explique la vraie cause.
 """
-                    }
-                ],
-                max_tokens=400
-            )
+                }
+            ],
+            max_tokens=400
+        )
 
-            reply = response.choices[0].message.content
+        reply = response.choices[0].message.content
 
-            memory[user_id].append({"role": "assistant", "content": reply})
+        memory[user_id].append({"role": "assistant", "content": reply})
 
-            await message.channel.send(reply)
-
-        except Exception as e:
-            print(e)
-            await message.channel.send("Erreur réponse.")
+        await message.channel.send(reply)
 
         return
 
