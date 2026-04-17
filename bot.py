@@ -22,35 +22,62 @@ bot = discord.Client(intents=intents)
 memory = {}
 
 # ======================
-# 📰 GDELT + SMART FILTER
+# 📰 NEWS SCORING
 # ======================
-def get_filtered_news(ticker):
+def score_news(title):
+
+    title = title.lower()
+
+    score = 0
+
+    # 🔥 HIGH IMPACT
+    if any(k in title for k in ["earnings", "guidance", "forecast"]):
+        score += 5
+
+    if any(k in title for k in ["deal", "contract", "partnership", "meta", "ai"]):
+        score += 5
+
+    if any(k in title for k in ["acquisition", "merger"]):
+        score += 5
+
+    # ⚡ MEDIUM
+    if any(k in title for k in ["upgrade", "downgrade"]):
+        score += 3
+
+    if any(k in title for k in ["revenue", "profit"]):
+        score += 3
+
+    # ❌ LOW / NOISE
+    if any(k in title for k in ["opinion", "analysis", "watch", "outlook"]):
+        score -= 2
+
+    return score
+
+
+def get_best_news(ticker):
     try:
         url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={ticker}&mode=artlist&maxrecords=10&format=json"
         r = requests.get(url)
         data = r.json()
 
         if "articles" not in data:
-            return []
+            return None
 
-        keywords = [
-            "earnings", "guidance", "forecast", "upgrade",
-            "downgrade", "deal", "acquisition", "AI",
-            "revenue", "profit", "lawsuit", "partnership"
-        ]
-
-        filtered = []
+        best = None
+        best_score = 0
 
         for a in data["articles"]:
-            title = a["title"].lower()
+            title = a["title"]
+            s = score_news(title)
 
-            if any(k in title for k in keywords):
-                filtered.append(a["title"])
+            if s > best_score:
+                best_score = s
+                best = title
 
-        return filtered[:5]
+        return best if best_score > 0 else None
 
     except:
-        return []
+        return None
 
 # ======================
 # READY
@@ -78,26 +105,6 @@ async def on_message(message):
         return
 
     # ======================
-    # TREND
-    # ======================
-    if message.content == "!trend":
-        await message.channel.send("Scan des tendances retail...")
-
-        response = client.chat.completions.create(
-            model="gpt-4.1",
-            messages=[
-                {"role": "system", "content": "Stocks populaires Reddit et Stocktwits"},
-                {"role": "user", "content": "Donne 5 stocks Reddit et 5 Stocktwits"}
-            ]
-        )
-
-        await message.channel.send("🔥 TREND RETAIL\n\n" +
-            response.choices[0].message.content +
-            "\n\n⚠️ À valider avec !analyse")
-
-        return
-
-    # ======================
     # ANALYSE
     # ======================
     if message.content.startswith("!analyse"):
@@ -119,6 +126,7 @@ async def on_message(message):
 
             avg_gain = sum(gains[-14:]) / 14
             avg_loss = sum(losses[-14:]) / 14
+
             rsi = 100 if avg_loss == 0 else 100 - (100 / (1 + avg_gain/avg_loss))
 
             def ema(prices, period):
@@ -152,7 +160,7 @@ async def on_message(message):
         return
 
     # ======================
-    # 💬 CHAT SMART FILTER
+    # 💬 CHAT + NEWS SCORING
     # ======================
     if bot.user in message.mentions:
 
@@ -173,17 +181,17 @@ async def on_message(message):
 
         # 🔥 detect ticker
         ticker = None
-        for word in question.split():
-            if word.isupper() and len(word) <= 5:
-                ticker = word
+        for w in question.split():
+            if w.isupper() and len(w) <= 5:
+                ticker = w
                 break
 
-        news = get_filtered_news(ticker) if ticker else []
+        best_news = get_best_news(ticker) if ticker else None
 
-        if len(news) == 0:
-            news_text = "Aucune news pertinente trouvée."
+        if best_news is None:
+            news_text = "Aucune news dominante. Mouvement probablement lié au momentum ou positioning."
         else:
-            news_text = "\n".join(news)
+            news_text = best_news
 
         response = client.chat.completions.create(
             model="gpt-4.1",
@@ -192,12 +200,12 @@ async def on_message(message):
                     "role": "system",
                     "content": """Tu es un trader professionnel.
 
-Tu dois identifier la cause réelle d’un mouvement.
+Tu dois expliquer un mouvement de marché.
 
 Règles :
+- Utiliser uniquement la news fournie
 - Ne jamais inventer
-- Si aucune news → dire que c’est du momentum
-- Toujours distinguer news vs positioning vs technique
+- Si pas de news → dire momentum
 - Répondre comme un trader réel
 """
                 },
@@ -206,10 +214,8 @@ Règles :
                     "content": f"""
 Question: {question}
 
-News:
+News dominante:
 {news_text}
-
-Explique la vraie cause.
 """
                 }
             ],
